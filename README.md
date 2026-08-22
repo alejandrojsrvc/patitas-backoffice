@@ -23,4 +23,20 @@ origen, copiar `.env.example` a `.env.local` y cambiar `VITE_API_URL`.
 ## Acceso
 
 El acceso real usa `POST /api/v1/auth/login` y requiere un usuario con rol `ADMIN`.
-La pantalla de ingreso también incluye un modo demostración que no escribe en la API.
+
+## Despliegue
+
+Producción se despliega mediante GitHub Actions y Vercel CLI, sin integración Git
+nativa de Vercel. El workflow está en
+`.github/workflows/deploy-production.yml` y se ejecuta al subir cambios a `main` o
+manualmente desde la pestaña Actions.
+
+Antes de habilitarlo, configurar en GitHub:
+
+- Secret `VERCEL_TOKEN`.
+- Secret `VERCEL_ORG_ID`.
+- Secret `VERCEL_PROJECT_ID`.
+- Variable `VERCEL_DEPLOY_ENABLED=true`.
+
+La URL pública de la API se configura como `VITE_API_URL` en el ambiente Production
+del proyecto de Vercel. Después de cambiarla hay que ejecutar nuevamente el workflow.
