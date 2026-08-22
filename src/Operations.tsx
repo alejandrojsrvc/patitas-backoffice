@@ -84,5 +84,5 @@ export function AuditPage() {
 }
 
 function Header({ eyebrow, title, description, actions, back }: { eyebrow: string; title: string; description: string; actions?: React.ReactNode; back?: () => void }) { return <div className="page-header"><div className="title-row">{back && <button className="back-button" onClick={back}><ArrowLeft size={19} /></button>}<div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p>{description}</p></div></div>{actions && <div className="header-actions">{actions}</div>}</div> }
-function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label><span>{label}</span>{children}</label> }
+function Field({ label, children, wide }: { label: string; children: React.ReactNode; wide?: boolean }) { return <label className={wide ? 'wide' : undefined}><span>{label}</span>{children}</label> }
 function Badge({ value, tone }: { value: string; tone: 'success' | 'warning' | 'danger' | 'neutral' }) { return <span className={`operation-badge ${tone}`}>{value}</span> }
