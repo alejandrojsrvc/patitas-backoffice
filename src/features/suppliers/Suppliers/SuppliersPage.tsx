@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import { Building2, ChevronRight, Plus, Search, Upload } from "lucide-react";
+import { Building2, ChevronRight, Download, Plus, Search, Upload } from "lucide-react";
 import { api } from "../../../api";
 import type { DataState } from "../../../types";
 import type { ToastKind } from "../../../app/navigation";
@@ -24,6 +24,8 @@ export function SuppliersPage({
   const [importing, setImporting] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportingOffers, setExportingOffers] = useState(false);
   const items = data.suppliers.filter((s) =>
     s.name.toLowerCase().includes(query.toLowerCase()),
   );
@@ -42,6 +44,42 @@ export function SuppliersPage({
       setBusy(false);
     }
   };
+  const exportSuppliers = async () => {
+    setExporting(true);
+    try {
+      const blob = await api.downloadSuppliersCsv();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "suppliers.csv";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (error) {
+      notify((error as Error).message, "error");
+    } finally {
+      setExporting(false);
+    }
+  };
+  const exportOffers = async () => {
+    setExportingOffers(true);
+    try {
+      const blob = await api.downloadSupplierOffersCsv();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "supplier-offers.csv";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (error) {
+      notify((error as Error).message, "error");
+    } finally {
+      setExportingOffers(false);
+    }
+  };
   return (
     <>
       <PageHeader
@@ -50,6 +88,12 @@ export function SuppliersPage({
         description={`${data.suppliers.filter((s) => s.active).length} proveedores activos`}
         actions={
           <>
+            <button className="button secondary" type="button" onClick={() => void exportSuppliers()} disabled={exporting}>
+              <Download size={16} /> {exporting ? "Exportando…" : "Exportar proveedores"}
+            </button>
+            <button className="button secondary" type="button" onClick={() => void exportOffers()} disabled={exportingOffers}>
+              <Download size={16} /> {exportingOffers ? "Exportando…" : "Exportar ofertas"}
+            </button>
             <button className="button secondary" type="button" onClick={() => setImporting(true)}>
               <Upload size={16} /> Importar ofertas
             </button>

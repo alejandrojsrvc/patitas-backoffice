@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, Search } from "lucide-react";
+import { Download, Plus, Search } from "lucide-react";
 import { api } from "../../../api";
 import type { DataState, Page, Product } from "../../../types";
 import type { View } from "../../../app/navigation";
@@ -29,6 +29,7 @@ export function ProductsPage({
   const [brand, setBrand] = useState("");
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
+  const [exporting, setExporting] = useState(false);
   const resultQuery = useQuery<Page<Product>>({
     queryKey: ["catalog", "products", { query: debouncedQuery, species, category, brand, status, page }],
     queryFn: () => api.products({ q: debouncedQuery || undefined, species: species || undefined, categoryId: category || undefined, brandId: brand || undefined, status: (status || undefined) as Product["status"] | undefined, page, perPage: 24 }),
@@ -38,6 +39,25 @@ export function ProductsPage({
   const products = Array.isArray(result.items) ? result.items : [];
   const brands = Array.isArray(data.brands) ? data.brands : [];
   const categories = Array.isArray(data.categories) ? data.categories : [];
+  const exportProducts = async () => {
+    setExporting(true);
+    try {
+      const blob = await api.downloadProductsCsv();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "products.csv";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (error) {
+      // The products screen does not receive notifications; surface the API error to the browser.
+      window.alert((error as Error).message);
+    } finally {
+      setExporting(false);
+    }
+  };
   return (
     <>
       <PageHeader
@@ -46,6 +66,9 @@ export function ProductsPage({
         description={`${result.meta.total} productos en catálogo`}
         actions={
           <>
+            <button className="button secondary" type="button" onClick={() => void exportProducts()} disabled={exporting}>
+              <Download size={16} /> {exporting ? "Exportando…" : "Exportar productos"}
+            </button>
             <button className="button secondary" type="button" onClick={() => navigate("product-import")}>
               Importar CSV
             </button>

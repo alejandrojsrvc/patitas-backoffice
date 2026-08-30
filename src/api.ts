@@ -204,6 +204,9 @@ export const api = {
     return request<ProductImportResult>('/admin/products/import-csv', { method: 'POST', body })
   },
   downloadSupplierOffersTemplate: () => request<Blob>('/admin/supplier-offers/import-template', {}, true, (response) => response.blob()),
+  downloadSuppliersCsv: () => request<Blob>('/admin/suppliers/export-csv', {}, true, (response) => response.blob()),
+  downloadProductsCsv: () => request<Blob>('/admin/products/export-csv', {}, true, (response) => response.blob()),
+  downloadSupplierOffersCsv: () => request<Blob>('/admin/supplier-offers/export-csv', {}, true, (response) => response.blob()),
   importSupplierOffersCsv: (file: File, dryRun = false) => {
     const body = new FormData()
     body.append('file', file)
