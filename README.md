@@ -6,7 +6,7 @@ Panel operativo React para administrar catálogo, proveedores y precios de Patit
 
 Requisitos:
 
-- API Patitas ejecutándose en `http://localhost:3000`.
+- API Patitas ejecutándose en `http://127.0.0.1:3000`.
 - Node.js 20 o superior.
 
 ```bash
@@ -14,11 +14,15 @@ npm install
 npm run dev
 ```
 
-La aplicación queda disponible en `http://localhost:5173`. Vite redirige las
-peticiones `/api` al backend para evitar problemas de CORS durante el desarrollo.
+La aplicación queda disponible en `http://localhost:5173`. El frontend consume
+`/api/v1` y Vite redirige las peticiones `/api` al backend para evitar problemas
+de CORS durante el desarrollo. El destino por defecto es
+`http://127.0.0.1:3000`, configurable con `VITE_DEV_API_TARGET` en `.env.local`.
 
-El contrato consumido es `http://localhost:3000/api/v1/docs-json`. Para usar otro
-origen, copiar `.env.example` a `.env.local` y cambiar `VITE_API_URL`.
+El contrato consumido es `http://127.0.0.1:3000/api/v1/docs-json`. Para usar otro
+destino del proxy, copia `.env.example` a `.env.local` y cambia
+`VITE_DEV_API_TARGET`. Mantén `VITE_API_URL=/api/v1`; una URL absoluta en esa
+variable evita el proxy y hace que el navegador consuma la API directamente.
 
 ## Acceso
 

@@ -1,4 +1,4 @@
-import type { AuditLog, Customer, DashboardSummary, DataState, FeedingGuide, FeedingGuideEntry, InventoryItem, InventoryMovement, InventoryRow, Offer, Order, OrderStatus, Page, PaymentStatus, PricingReview, PricingRules, Product, ProductMedia, ProductStatus, Reference, StockStatus, Supplier, Variant } from './types'
+import type { AuditLog, BulkPricingRecalculation, Customer, DashboardSummary, DataState, FeedingGuide, FeedingGuideEntry, InventoryItem, InventoryMovement, InventoryRow, Offer, OperatingCost, Order, OrderStatus, Page, PaymentFeeSchedule, PaymentProviderConfiguration, PaymentProviderName, PaymentStatus, PricingReview, PricingReviewListItem, PricingRules, PricingScenario, PricingScenarioAnalysis, Product, ProductImportResult, ProductMedia, ProductStatus, Reference, ShippingOption, ShippingQuote, ShippingZone, ShippingDeliveryWindows, StockStatus, Supplier, SupplierOfferImportResult, Variant } from './types'
 
 const BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '')
 const SESSION_KEY = 'patitas_admin_session'
@@ -50,6 +50,7 @@ export const session = {
 }
 
 let refreshInFlight: Promise<string> | null = null
+type ResponseParser<T> = (response: Response) => Promise<T>
 
 const redirectToLogin = () => {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT))
@@ -99,7 +100,7 @@ export const refreshSession = (): Promise<string> => {
 const shouldRefresh = (value: StoredSession) => value.expiresAt !== null
   && value.expiresAt <= Math.floor(Date.now() / 1000) + 30
 
-async function request<T>(path: string, options: RequestInit = {}, authenticated = true): Promise<T> {
+async function request<T>(path: string, options: RequestInit = {}, authenticated = true, parseResponse: ResponseParser<T> = (response) => response.json() as Promise<T>): Promise<T> {
   let current = session.get()
   let refreshed = false
 
@@ -143,16 +144,31 @@ async function request<T>(path: string, options: RequestInit = {}, authenticated
     error.status = response.status
     throw error
   }
-  return response.json() as Promise<T>
+  return parseResponse(response)
 }
 
 const write = <T>(path: string, method: 'POST' | 'PATCH' | 'PUT', body?: unknown, authenticated = true) => request<T>(path, { method, body: body === undefined ? undefined : JSON.stringify(body) }, authenticated)
 const remove = <T>(path: string) => request<T>(path, { method: 'DELETE' })
-type RawPage<T> = { items: T[]; meta?: Page<T>['meta']; page?: number; perPage?: number; total?: number }
+type RawPage<T> = T[] | {
+  items?: T[]
+  data?: T[]
+  meta?: Page<T>['meta']
+  page?: number
+  perPage?: number
+  total?: number
+}
 const normalizePage = <T>(value: RawPage<T>): Page<T> => {
-  if (value.meta) return { items: value.items, meta: value.meta }
-  const page = value.page || 1; const perPage = value.perPage || Math.max(1, value.items.length); const total = value.total ?? value.items.length
-  return { items: value.items, meta: { page, perPage, total, totalPages: Math.ceil(total / perPage) } }
+  if (Array.isArray(value)) {
+    return { items: value, meta: { page: 1, perPage: Math.max(1, value.length), total: value.length, totalPages: value.length ? 1 : 0 } }
+  }
+  const items = Array.isArray(value.items) ? value.items : Array.isArray(value.data) ? value.data : []
+  if (value.meta) return { items, meta: value.meta }
+  const page = value.page || 1; const perPage = value.perPage || Math.max(1, items.length); const total = value.total ?? items.length
+  return { items, meta: { page, perPage, total, totalPages: Math.ceil(total / perPage) } }
+}
+const normalizeList = <T>(value: T[] | { items?: T[] } | undefined): T[] => {
+  if (Array.isArray(value)) return value
+  return Array.isArray(value?.items) ? value.items : []
 }
 const queryString = (values: Record<string, string | number | boolean | null | undefined>) => {
   const query = new URLSearchParams()
@@ -173,15 +189,30 @@ export const api = {
   login: (email: string, password: string) => write<AuthResult>('/auth/login', 'POST', { email, password }, false),
   loadAll: async (): Promise<DataState> => {
     const [page, brands, categories, suppliers, offers, rules] = await Promise.all([
-      request<{ items: Product[] }>('/admin/products?perPage=100'), request<Reference[]>('/admin/brands'), request<Reference[]>('/admin/categories'),
-      request<RawPage<Supplier>>('/admin/suppliers?perPage=100'), request<Offer[]>('/admin/supplier-offers'), request<DataState['rules']>('/admin/pricing/rules'),
+      request<RawPage<Product>>('/admin/products?perPage=100').then(normalizePage), request<Reference[] | { items?: Reference[] }>('/admin/brands'), request<Reference[] | { items?: Reference[] }>('/admin/categories'),
+      request<RawPage<Supplier>>('/admin/suppliers?perPage=100').then(normalizePage), request<Offer[] | { items?: Offer[] }>('/admin/supplier-offers'), request<DataState['rules']>('/admin/pricing/rules'),
     ])
-    return { products: page.items, brands, categories, suppliers: suppliers.items, offers, rules }
+    return { products: page.items, brands: normalizeList(brands), categories: normalizeList(categories), suppliers: suppliers.items, offers: normalizeList(offers), rules }
   },
-  createProduct: (body: { name: string; brandId: string; categoryId: string; species?: string; description?: string }) => write<Product>('/admin/products', 'POST', body),
-  updateProduct: (id: string, body: { name?: string; slug?: string; description?: string | null; brandId?: string; categoryId?: string; species?: string | null; line?: string | null; lifeStage?: string | null; breedSize?: string | null; estimatedDailyGramsPerKg?: string | null; featuredRank?: number | null; status?: ProductStatus }) => write<Product>(`/admin/products/${id}`, 'PATCH', body),
-  createVariant: (productId: string, body: { sku?: string; presentation?: string; weightGrams?: number; active?: boolean }) => write<Variant>(`/admin/products/${productId}/variants`, 'POST', body),
-  updateVariant: (id: string, body: { sku?: string | null; presentation?: string | null; weightGrams?: number | null; active?: boolean; compareAtPrice?: string | null; preferredSupplierOfferId?: string | null }) => write<Variant>(`/admin/variants/${id}`, 'PATCH', body),
+  products: (params: { q?: string; status?: ProductStatus; brandId?: string; categoryId?: string; species?: string; page?: number; perPage?: number }) => request<RawPage<Product>>(`/admin/products${queryString(params)}`).then(normalizePage),
+  product: (id: string) => request<Product>(`/admin/products/${id}`),
+  createProduct: (body: { name: string; brandId: string; categoryId: string; species?: string; description?: string | null; ingredientsText?: string | null; analyticalComposition?: Record<string, unknown> | null }) => write<Product>('/admin/products', 'POST', body),
+  importProductsCsv: (file: File, publish = false) => {
+    const body = new FormData()
+    body.append('file', file)
+    body.append('publish', String(publish))
+    return request<ProductImportResult>('/admin/products/import-csv', { method: 'POST', body })
+  },
+  downloadSupplierOffersTemplate: () => request<Blob>('/admin/supplier-offers/import-template', {}, true, (response) => response.blob()),
+  importSupplierOffersCsv: (file: File, dryRun = false) => {
+    const body = new FormData()
+    body.append('file', file)
+    body.append('dryRun', String(dryRun))
+    return request<SupplierOfferImportResult>('/admin/supplier-offers/import-csv', { method: 'POST', body })
+  },
+  updateProduct: (id: string, body: { name?: string; slug?: string; description?: string | null; ingredientsText?: string | null; analyticalComposition?: Record<string, unknown> | null; brandId?: string; categoryId?: string; species?: string | null; line?: string | null; lifeStage?: string | null; breedSize?: string | null; estimatedDailyGramsPerKg?: string | null; featuredRank?: number | null; status?: ProductStatus }) => write<Product>(`/admin/products/${id}`, 'PATCH', body),
+  createVariant: (productId: string, body: { sku?: string; barcode?: string | null; presentation?: string; weightGrams?: number; active?: boolean }) => write<Variant>(`/admin/products/${productId}/variants`, 'POST', body),
+  updateVariant: (id: string, body: { sku?: string | null; barcode?: string | null; presentation?: string | null; weightGrams?: number | null; active?: boolean; compareAtPrice?: string | null; preferredSupplierOfferId?: string | null }) => write<Variant>(`/admin/variants/${id}`, 'PATCH', body),
   uploadProductMedia,
   updateProductMedia: (productId: string, mediaId: string, body: { altText?: string; variantId?: string | null; displayOrder?: number }) => write<ProductMedia>(`/admin/products/${productId}/media/${mediaId}`, 'PATCH', body),
   deleteProductMedia: (productId: string, mediaId: string) => remove<{ id: string; deleted: boolean }>(`/admin/products/${productId}/media/${mediaId}`),
@@ -198,14 +229,28 @@ export const api = {
   updateSupplier: (id: string, body: { name?: string; active?: boolean }) => write<Supplier>(`/admin/suppliers/${id}`, 'PATCH', body),
   createOffer: (body: { supplierId: string; variantId: string; supplierSku?: string | null; unitCost: string; stockStatus?: StockStatus; leadTimeHours?: number | null; minimumQuantity?: number }) => write<Offer>('/admin/supplier-offers', 'POST', body),
   updateOffer: (id: string, body: { supplierSku?: string | null; unitCost?: string; stockStatus?: StockStatus; leadTimeHours?: number | null; minimumQuantity?: number }) => write<Offer>(`/admin/supplier-offers/${id}`, 'PATCH', body),
-  calculate: (variantId: string, supplierOfferId?: string) => write<{ calculation: { recommendedPrice: string; commercialPrice: string; breakdown: PricingReview['breakdown'] } }>('/admin/pricing/calculate', 'POST', { variantId, ...(supplierOfferId ? { supplierOfferId } : {}) }),
-  recalculate: (variantId: string) => write<PricingReview>(`/admin/variants/${variantId}/recalculate-price`, 'POST', {}),
+  calculate: (variantId: string, supplierOfferId?: string, scenarioId?: string) => write<{ calculation: { recommendedPrice: string; commercialPrice: string; breakdown: PricingReview['breakdown'] } }>('/admin/pricing/calculate', 'POST', { variantId, ...(supplierOfferId ? { supplierOfferId } : {}), ...(scenarioId ? { scenarioId } : {}) }),
+  recalculate: (variantId: string, body: { supplierOfferId?: string; scenarioId?: string }) => write<PricingReview>(`/admin/variants/${variantId}/recalculate-price`, 'POST', body),
+  recalculateAllPricing: (scenarioId: string) => write<BulkPricingRecalculation>('/admin/pricing/recalculate', 'POST', { scenarioId }),
   reviews: (variantId: string) => request<PricingReview[]>(`/admin/variants/${variantId}/pricing-reviews`),
-  allReviews: (params: { status?: PricingReview['status']; q?: string; page?: number; perPage?: number }) => request<RawPage<PricingReview>>(`/admin/pricing/reviews${queryString(params)}`).then((value) => Array.isArray(value) ? normalizePage({ items: value }) : normalizePage(value)),
+  allReviews: (params: { status?: PricingReview['status']; q?: string; page?: number; perPage?: number }) => request<RawPage<PricingReviewListItem>>(`/admin/pricing/reviews${queryString(params)}`).then((value) => Array.isArray(value) ? normalizePage({ items: value }) : normalizePage(value)),
   ruleHistory: () => request<PricingRules[]>('/admin/pricing/rules/history'),
-  applyPrice: (variantId: string, pricingReviewId: string) => write<PricingReview>(`/admin/variants/${variantId}/apply-price`, 'POST', { pricingReviewId }),
+  applyPrice: (variantId: string, pricingReviewId: string, activateProduct = false) => write<PricingReview>(`/admin/variants/${variantId}/apply-price`, 'POST', { pricingReviewId, activateProduct }),
   updateRules: (body: Record<string, string>) => write<PricingRules>('/admin/pricing/rules', 'PATCH', body),
   activateRules: () => write<PricingRules>('/admin/pricing/rules/activate', 'POST'),
+  paymentFeeSchedules: () => request<PaymentFeeSchedule[]>('/admin/pricing/payment-fees'),
+  paymentProviderConfigurations: () => request<PaymentProviderConfiguration[]>('/admin/payment-providers'),
+  updatePaymentProviderConfiguration: (provider: PaymentProviderName, body: { enabled?: boolean; priority?: number }) => write<PaymentProviderConfiguration>(`/admin/payment-providers/${provider}`, 'PATCH', body),
+  selectPaymentFeeSchedule: (id: string) => write<PricingRules>(`/admin/pricing/payment-fees/${id}/select`, 'POST'),
+  createPaymentFeeSchedule: (body: { provider: PaymentFeeSchedule['provider']; product: 'CHECKOUT_PRO'; name: string; settlementDays: number; feePercent: string; vatApplies?: boolean; vatPercent: string; fixedFee?: string; active?: boolean }) => write<PaymentFeeSchedule>('/admin/pricing/payment-fees', 'POST', body),
+  updatePaymentFeeSchedule: (id: string, body: Partial<{ provider: PaymentFeeSchedule['provider']; product: 'CHECKOUT_PRO'; name: string; settlementDays: number; feePercent: string; vatApplies: boolean; vatPercent: string; fixedFee: string; active: boolean; effectiveFrom: string; effectiveTo: string | null }>) => write<PaymentFeeSchedule>(`/admin/pricing/payment-fees/${id}`, 'PATCH', body),
+  operatingCosts: () => request<OperatingCost[]>('/admin/pricing/operating-costs'),
+  createOperatingCost: (body: { name: string; type: OperatingCost['type']; amount?: string | null; percent?: string | null; active?: boolean; effectiveFrom?: string; effectiveTo?: string | null }) => write<OperatingCost>('/admin/pricing/operating-costs', 'POST', body),
+  updateOperatingCost: (id: string, body: Partial<{ name: string; type: OperatingCost['type']; amount: string | null; percent: string | null; active: boolean; effectiveFrom: string; effectiveTo: string | null }>) => write<OperatingCost>(`/admin/pricing/operating-costs/${id}`, 'PATCH', body),
+  pricingScenarios: () => request<PricingScenario[]>('/admin/pricing/scenarios'),
+  createPricingScenario: (body: { name: string; periodStart: string; periodEnd: string; ordersSource: PricingScenario['ordersSource']; projectedOrders: number; averageItemsPerOrder: string; paymentFeeScheduleId?: string | null; active?: boolean }) => write<PricingScenario>('/admin/pricing/scenarios', 'POST', body),
+  updatePricingScenario: (id: string, body: Partial<{ name: string; periodStart: string; periodEnd: string; ordersSource: PricingScenario['ordersSource']; projectedOrders: number; averageItemsPerOrder: string; paymentFeeScheduleId: string | null; active: boolean }>) => write<PricingScenario>(`/admin/pricing/scenarios/${id}`, 'PATCH', body),
+  pricingScenarioAnalysis: (id: string) => request<PricingScenarioAnalysis>(`/admin/pricing/scenarios/${id}/analysis`),
   customers: (params: { q?: string; active?: boolean; page?: number; perPage?: number }) => request<RawPage<Customer>>(`/admin/customers${queryString(params)}`).then(normalizePage),
   customer: (id: string) => request<Customer>(`/admin/customers/${id}`),
   createCustomer: (body: { fullName: string; email: string; phone?: string | null; active?: boolean }) => write<Customer>('/admin/customers', 'POST', body),
@@ -220,4 +265,12 @@ export const api = {
   uploadPaymentProof: (orderId: string, paymentId: string, file: File) => { const body = new FormData(); body.append('file', file); return request<Order>(`/admin/orders/${orderId}/payments/${paymentId}/proof/upload`, { method: 'POST', body }) },
   dashboardSummary: () => request<DashboardSummary>('/admin/dashboard/summary'),
   auditLogs: (params: { q?: string; method?: string; statusCode?: number; dateFrom?: string; dateTo?: string; page?: number; perPage?: number }) => request<RawPage<AuditLog>>(`/admin/audit-logs${queryString(params)}`).then(normalizePage),
+  shippingOptions: (active?: boolean) => request<ShippingOption[]>(`/admin/shipping-options${queryString({ active })}`),
+  createShippingOption: (body: { name: string; description?: string | null; cost: string; active?: boolean; displayOrder?: number }) => write<ShippingOption>('/admin/shipping-options', 'POST', body),
+  updateShippingOption: (id: string, body: Partial<{ name: string; description: string | null; cost: string; active: boolean; displayOrder: number }>) => write<ShippingOption>(`/admin/shipping-options/${id}`, 'PATCH', body),
+  shippingZones: (active?: boolean) => request<ShippingZone[]>(`/admin/shipping-options/zones${queryString({ active })}`),
+  createShippingZone: (body: { name: string; type: ShippingZone['type']; active?: boolean; priority?: number; postalCodes?: string[]; neighborhoods?: string[]; polygon?: unknown; cost: string; freeShippingFrom?: string | null; maxWeightGrams?: number | null; estimatedDaysMin: number; estimatedDaysMax: number; deliveryWindows?: ShippingDeliveryWindows }) => write<ShippingZone>('/admin/shipping-options/zones', 'POST', body),
+  updateShippingZone: (id: string, body: Partial<{ name: string; type: ShippingZone['type']; active: boolean; priority: number; postalCodes: string[]; neighborhoods: string[]; polygon: unknown; cost: string; freeShippingFrom: string | null; maxWeightGrams: number | null; estimatedDaysMin: number; estimatedDaysMax: number; deliveryWindows: ShippingDeliveryWindows }>) => write<ShippingZone>(`/admin/shipping-options/zones/${id}`, 'PATCH', body),
+  updateShippingDeliveryWindows: (id: string, body: ShippingDeliveryWindows) => write<ShippingZone>(`/admin/shipping-options/zones/${id}/delivery-windows`, 'PATCH', body),
+  shippingQuote: (params: { postalCode?: string; neighborhood?: string; city?: string; province?: string; subtotal: string; weightGrams?: number }) => request<ShippingQuote>(`/admin/shipping-options/quote${queryString(params)}`),
 }
