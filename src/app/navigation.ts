@@ -20,6 +20,7 @@ export type View =
   | "new-order"
   | "order"
   | "settings"
+  | "promotions-benefits"
   | "shipping-options"
   | "audit";
 

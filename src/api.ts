@@ -1,4 +1,4 @@
-import type { AuditLog, BulkPricingRecalculation, Customer, DashboardSummary, DataState, FeedingGuide, FeedingGuideEntry, InventoryItem, InventoryMovement, InventoryRow, Offer, OperatingCost, Order, OrderStatus, Page, PaymentFeeSchedule, PaymentProviderConfiguration, PaymentProviderName, PaymentStatus, PricingReview, PricingReviewListItem, PricingRules, PricingScenario, PricingScenarioAnalysis, Product, ProductImportResult, ProductMedia, ProductStatus, Reference, ShippingOption, ShippingQuote, ShippingZone, ShippingDeliveryWindows, StockStatus, Supplier, SupplierOfferImportResult, Variant } from './types'
+import type { AuditLog, BulkPricingRecalculation, Coupon, CouponInput, Customer, DashboardSummary, DataState, FeedingGuide, FeedingGuideEntry, InventoryItem, InventoryMovement, InventoryRow, Offer, OperatingCost, Order, OrderStatus, Page, PaymentFeeSchedule, PaymentProviderConfiguration, PaymentProviderName, PaymentStatus, PricingReview, PricingReviewListItem, PricingRules, PricingScenario, PricingScenarioAnalysis, Product, ProductImportResult, ProductMedia, ProductStatus, Promotion, PromotionInput, PurchaseScheduleConfiguration, Reference, ShippingOption, ShippingQuote, ShippingZone, ShippingDeliveryWindows, StockStatus, Supplier, SupplierOfferImportResult, TransferBenefitConfiguration, TransferInstructions, Variant } from './types'
 
 const BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '')
 const SESSION_KEY = 'patitas_admin_session'
@@ -186,7 +186,11 @@ const uploadProductMedia = (productId: string, input: { file: File; altText: str
 }
 
 export const api = {
-  login: (email: string, password: string) => write<AuthResult>('/auth/login', 'POST', { email, password }, false),
+  login: (email: string, password: string, turnstileToken?: string) => request<AuthResult>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+    ...(turnstileToken ? { headers: { 'X-Turnstile-Token': turnstileToken } } : {}),
+  }, false),
   loadAll: async (): Promise<DataState> => {
     const [page, brands, categories, suppliers, offers, rules] = await Promise.all([
       request<RawPage<Product>>('/admin/products?perPage=100').then(normalizePage), request<Reference[] | { items?: Reference[] }>('/admin/brands'), request<Reference[] | { items?: Reference[] }>('/admin/categories'),
@@ -254,6 +258,16 @@ export const api = {
   createPricingScenario: (body: { name: string; periodStart: string; periodEnd: string; ordersSource: PricingScenario['ordersSource']; projectedOrders: number; averageItemsPerOrder: string; paymentFeeScheduleId?: string | null; active?: boolean }) => write<PricingScenario>('/admin/pricing/scenarios', 'POST', body),
   updatePricingScenario: (id: string, body: Partial<{ name: string; periodStart: string; periodEnd: string; ordersSource: PricingScenario['ordersSource']; projectedOrders: number; averageItemsPerOrder: string; paymentFeeScheduleId: string | null; active: boolean }>) => write<PricingScenario>(`/admin/pricing/scenarios/${id}`, 'PATCH', body),
   pricingScenarioAnalysis: (id: string) => request<PricingScenarioAnalysis>(`/admin/pricing/scenarios/${id}/analysis`),
+  promotions: () => request<Promotion[]>('/admin/promotions'),
+  createPromotion: (body: PromotionInput) => write<Promotion>('/admin/promotions', 'POST', body),
+  updatePromotion: (id: string, body: Partial<PromotionInput>) => write<Promotion>(`/admin/promotions/${id}`, 'PATCH', body),
+  coupons: () => request<Coupon[]>('/admin/coupons'),
+  createCoupon: (body: CouponInput) => write<Coupon>('/admin/coupons', 'POST', body),
+  updateCoupon: (id: string, body: Partial<CouponInput>) => write<Coupon>(`/admin/coupons/${id}`, 'PATCH', body),
+  purchaseScheduleConfiguration: () => request<PurchaseScheduleConfiguration>('/admin/purchase-schedules/configuration'),
+  updatePurchaseScheduleConfiguration: (body: Partial<Pick<PurchaseScheduleConfiguration, 'enabled' | 'discountPercent' | 'leadDays'>>) => write<PurchaseScheduleConfiguration>('/admin/purchase-schedules/configuration', 'PATCH', body),
+  transferBenefitConfiguration: () => request<TransferBenefitConfiguration>('/admin/payment-method-benefits/transfer'),
+  updateTransferBenefitConfiguration: (body: { enabled?: boolean; discountPercent?: string; expirationMinutes?: number; instructions?: TransferInstructions | null }) => write<TransferBenefitConfiguration>('/admin/payment-method-benefits/transfer', 'PATCH', body),
   customers: (params: { q?: string; active?: boolean; page?: number; perPage?: number }) => request<RawPage<Customer>>(`/admin/customers${queryString(params)}`).then(normalizePage),
   customer: (id: string) => request<Customer>(`/admin/customers/${id}`),
   createCustomer: (body: { fullName: string; email: string; phone?: string | null; active?: boolean }) => write<Customer>('/admin/customers', 'POST', body),

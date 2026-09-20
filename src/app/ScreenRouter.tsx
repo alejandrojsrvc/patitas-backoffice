@@ -23,6 +23,7 @@ const OrdersPage = lazy(() => import("../features/orders/Orders/OrdersPage").the
 const NewOrderPage = lazy(() => import("../features/orders/NewOrder/NewOrderPage").then((module) => ({ default: module.NewOrderPage })));
 const OrderDetailPage = lazy(() => import("../features/orders/OrderDetail/OrderDetailPage").then((module) => ({ default: module.OrderDetailPage })));
 const PricingSettingsPage = lazy(() => import("../features/pricing/PricingSettings/PricingSettingsPage").then((module) => ({ default: module.PricingSettingsPage })));
+const PromotionsBenefitsPage = lazy(() => import("../features/promotions/PromotionsBenefits/PromotionsBenefitsPage").then((module) => ({ default: module.PromotionsBenefitsPage })));
 const ShippingOptionsPage = lazy(() => import("../features/shipping/ShippingOptions/ShippingOptionsPage").then((module) => ({ default: module.ShippingOptionsPage })));
 const AuditPage = lazy(() => import("../features/audit/Audit/AuditPage").then((module) => ({ default: module.AuditPage })));
 
@@ -198,6 +199,7 @@ export function ScreenRouter({
       {view === "settings" && (
         <PricingSettingsPage data={data} mutate={mutate} notify={notify} />
       )}
+      {view === "promotions-benefits" && <PromotionsBenefitsPage data={data} notify={notify} />}
       {view === "shipping-options" && <ShippingOptionsPage notify={notify} />}
       {view === "audit" && <AuditPage />}
       {((view === "product" || view === "product-edit") && !selectedProduct) ||

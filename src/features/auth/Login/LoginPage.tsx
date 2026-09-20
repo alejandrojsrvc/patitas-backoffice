@@ -1,26 +1,102 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { AlertTriangle, ArrowRight, Check } from "lucide-react";
 import { api, session } from "../../../api";
 
 const apiUrl = import.meta.env.VITE_API_URL || "/api/v1";
+const turnstileSiteKey = (import.meta.env.VITE_CLOUDFLARE_TURNSTILE_SITE_KEY || "").trim();
+const turnstileScriptUrl = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+
+type TurnstileApi = {
+  render: (container: HTMLElement, options: {
+    sitekey: string;
+    action: string;
+    theme: "light";
+    size: "flexible";
+    callback: (token: string) => void;
+    "expired-callback": () => void;
+    "error-callback": () => void;
+  }) => string;
+  remove: (widgetId: string) => void;
+};
+
+declare global {
+  interface Window {
+    turnstile?: TurnstileApi;
+  }
+}
+
+function TurnstileChallenge({ onToken, resetKey }: { onToken: (token: string | null) => void; resetKey: number }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const onTokenRef = useRef(onToken);
+  onTokenRef.current = onToken;
+
+  useEffect(() => {
+    if (!turnstileSiteKey) return;
+    let removeWidget: (() => void) | undefined;
+
+    const render = () => {
+      if (!window.turnstile || !containerRef.current) return undefined;
+      const widgetId = window.turnstile.render(containerRef.current, {
+        sitekey: turnstileSiteKey,
+        action: "auth-login",
+        theme: "light",
+        size: "flexible",
+        callback: (token) => onTokenRef.current(token),
+        "expired-callback": () => onTokenRef.current(null),
+        "error-callback": () => onTokenRef.current(null),
+      });
+      return () => window.turnstile?.remove(widgetId);
+    };
+
+    if (window.turnstile) {
+      removeWidget = render();
+      return removeWidget;
+    }
+
+    const handleReady = () => {
+      removeWidget = render();
+    };
+    window.addEventListener("patitas-turnstile-ready", handleReady);
+    if (!document.querySelector(`script[src="${turnstileScriptUrl}"]`)) {
+      const script = document.createElement("script");
+      script.src = turnstileScriptUrl;
+      script.async = true;
+      script.defer = true;
+      script.onload = () => window.dispatchEvent(new Event("patitas-turnstile-ready"));
+      document.head.appendChild(script);
+    }
+
+    return () => {
+      window.removeEventListener("patitas-turnstile-ready", handleReady);
+      removeWidget?.();
+    };
+  }, [resetKey]);
+
+  if (!turnstileSiteKey) return null;
+  return <div ref={containerRef} className="turnstile-challenge" aria-label="Verificación de seguridad" />;
+}
 
 export function LoginPage({ onAuthenticated }: { onAuthenticated: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [turnstileResetKey, setTurnstileResetKey] = useState(0);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
     setError("");
     try {
-      const result = await api.login(email, password);
+      const result = await api.login(email, password, turnstileToken ?? undefined);
       if (!result.session?.accessToken || result.user?.role !== "ADMIN")
         throw new Error("Esta cuenta no tiene acceso al backoffice.");
       session.set(result.session);
       onAuthenticated();
     } catch (cause) {
       setError((cause as Error).message);
+      setTurnstileToken(null);
+      setTurnstileResetKey((current) => current + 1);
     } finally {
       setBusy(false);
     }
@@ -56,6 +132,7 @@ export function LoginPage({ onAuthenticated }: { onAuthenticated: () => void }) 
             Contraseña
             <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="••••••••" minLength={8} required />
           </label>
+          <TurnstileChallenge onToken={setTurnstileToken} resetKey={turnstileResetKey} />
           {error && <div className="inline-error"><AlertTriangle size={16} />{error}</div>}
           <button className="button primary full" disabled={busy}>
             {busy ? "Ingresando…" : <>Ingresar <ArrowRight size={17} /></>}

@@ -28,4 +28,11 @@ describe("readRoute", () => {
       valid: true,
     });
   });
+
+  it("recognizes the promotions and benefits screen", () => {
+    expect(readRoute("/promociones-beneficios")).toMatchObject({
+      view: "promotions-benefits",
+      valid: true,
+    });
+  });
 });

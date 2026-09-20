@@ -191,3 +191,43 @@ export interface DataState {
   products: Product[]; brands: Reference[]; categories: Reference[]
   suppliers: Supplier[]; offers: Offer[]; rules: { active: PricingRules | null; draft: PricingRules | null }
 }
+
+export type PromotionType = 'PERCENTAGE' | 'FIXED'
+export type PromotionKind = 'DISCOUNT' | 'BUNDLE'
+export interface PromotionTarget {
+  productId: string | null; variantId: string | null; categoryId: string | null; brandId: string | null
+}
+export interface PromotionBundleItem { variantId: string; quantity: number }
+export interface Promotion {
+  id: string; name: string; type: PromotionType; kind: PromotionKind; value: string
+  active: boolean; startsAt: string | null; endsAt: string | null; priority: number
+  minimumSubtotal: string | null; maxRedemptions: number | null; redemptionCount: number
+  targets: PromotionTarget[]; bundleItems: PromotionBundleItem[]
+}
+export interface PromotionInput {
+  name: string; type: PromotionType; kind?: PromotionKind; value: string; active?: boolean
+  startsAt?: string | null; endsAt?: string | null; priority?: number
+  minimumSubtotal?: string | null; maxRedemptions?: number | null
+  targets?: PromotionTarget[]; bundleItems?: PromotionBundleItem[]
+}
+export interface Coupon {
+  id: string; promotionId: string; code: string; active: boolean
+  startsAt: string | null; endsAt: string | null; maxRedemptions: number | null
+  redemptionCount: number; perCustomerLimit: number | null; promotion: Promotion
+}
+export interface CouponInput {
+  promotionId: string; code: string; active?: boolean; startsAt?: string | null
+  endsAt?: string | null; maxRedemptions?: number | null; perCustomerLimit?: number | null
+}
+export interface PurchaseScheduleConfiguration {
+  id: string; enabled: boolean; discountPercent: string; leadDays: number
+  createdAt: string; updatedAt: string
+}
+export interface TransferInstructions {
+  accountHolder: string; bank: string; alias: string | null; cbu: string | null; note: string | null
+}
+export interface TransferBenefitConfiguration {
+  id: string; paymentMethod: string; enabled: boolean; discountPercent: string
+  expirationMinutes: number; instructions: TransferInstructions | null
+  createdAt: string; updatedAt: string
+}

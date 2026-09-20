@@ -24,6 +24,7 @@ export const STATIC_PATHS: Partial<Record<View, string>> = {
   orders: "/pedidos",
   "new-order": "/pedidos/nuevo",
   settings: "/configuracion",
+  "promotions-benefits": "/promociones-beneficios",
   "shipping-options": "/configuracion/opciones-envio",
   audit: "/configuracion/auditoria",
 };

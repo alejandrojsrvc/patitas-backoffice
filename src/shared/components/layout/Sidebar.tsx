@@ -7,6 +7,7 @@ import {
   CircleDollarSign,
   LayoutDashboard,
   Package,
+  Percent,
   Settings,
   ShoppingBag,
   Users,
@@ -71,6 +72,7 @@ export function Sidebar({
           )}
           {item("suppliers", <Building2 size={18} />, "Proveedores")}
           {item("prices", <CircleDollarSign size={18} />, "Precios")}
+          {item("promotions-benefits", <Percent size={18} />, "Promociones y beneficios")}
           <div className="nav-separator" />
           {item("inventory", <Boxes size={18} />, "Inventario")}
           {item("orders", <ShoppingBag size={18} />, "Pedidos")}
